@@ -4,39 +4,30 @@ const mongoose = require("mongoose");
 const BookingSchema = new mongoose.Schema(
   {
     user: {
-      // type: mongoose.Schema.Types.ObjectId,
-      type: String,
-      // ref: 'User',
+      type: mongoose.Schema.Types.ObjectId,
+      //type: String,
+      ref: "User",
       required: true,
     },
-    venue: {
-      type: String,
-      required: true,
-    },
-    photography: {
-      type: String,
-      required: true,
-    },
-    decoration: {
-      type: String,
-      required: true,
-    },
-    catering: {
-      type: String,
-      required: true,
-    },
+    venu: { type: mongoose.Schema.Types.ObjectId, required: true },
+    catring: { type: mongoose.Schema.Types.ObjectId, required: true },
+    decoration: { type: mongoose.Schema.Types.ObjectId, required: true },
+    photograph: { type: mongoose.Schema.Types.ObjectId, required: true },
     organizingTeam: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      // ref: "Organizer",
       required: true,
     },
     date: {
       type: Date,
-      required: true,
     },
     status: {
       type: String,
       enum: ["booked", "cancelled"],
       default: "booked",
+    },
+    confirmation: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, required: true, ref: "Confirm" }],
     },
   },
   {
