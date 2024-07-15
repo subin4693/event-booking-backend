@@ -1,114 +1,249 @@
 // controllers/bookingController.js
 const Booking = require("../models/bookingModel");
 const Item = require("../models/itemsModel");
-const Confirm = require("../models/confirmationModel");
-const {
-  checkItemAvailability,
-  removeDatesFromBookingItems,
-  addDatesToBookingItems,
-} = require("../utils/utils");
+const catchAsync = require("../utils/catchAsync");
+const AppError = require("../utils/appError");
+const { v4: uuidv4 } = require("uuid");
 
-// Create a new booking
+const mongoose = require("mongoose");
+const { GridFSBucket } = require("mongodb");
 
-exports.createBooking = async (req, res) => {
+const getImages = async (image) => {
   try {
-    const { date, venu, catring, decoration, photograph } = req.body;
+    const { db } = mongoose.connection;
+    const imageBucket = new GridFSBucket(db, { bucketName: "images" });
 
-    //Checking the availability dates
-    await checkItemAvailability(date, venu, "venu");
-    await checkItemAvailability(date, decoration, "Decoration");
-    await checkItemAvailability(date, catring, "Catring");
-    await checkItemAvailability(date, photograph, "Photograph");
+    const filenames = image;
 
-    const newBooking = new Booking({ ...req.body, date: null });
-
-    //creating confirmation collections
-    [venu, catring, decoration, photograph].map(async (singleItemId) => {
-      const confimation = new Confirm({
-        user: req.body.user,
-        clientId: req.body.clientId,
-        newBooking: newBooking._id,
-        date: date,
-      });
-      newBooking.confirmation.push(confimation._id);
-      await confimation.save();
-    });
-
-    await newBooking.save();
-
-    res.status(201).json(newBooking);
-  } catch (error) {
-    console.log(error);
-    res.status(400).json({ message: error.message });
-  }
-};
-
-// Cancel a booking
-exports.cancelBooking = async (req, res) => {
-  try {
-    const booking = await Booking.findById(req.params.id);
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
+    if (!filenames.length) {
+      throw new Error("No filenames provided");
     }
 
-    booking.status = "cancelled";
-    const { date, venu, catring, decoration, photograph } = booking;
+    const imagePromises = filenames.map((filename) => {
+      return new Promise((resolve, reject) => {
+        const imageData = [];
+        const downloadStream = imageBucket.openDownloadStreamByName(filename);
 
-    await removeDatesFromBookingItems(date, venu);
-    await removeDatesFromBookingItems(date, catring);
-    await removeDatesFromBookingItems(date, decoration);
-    await removeDatesFromBookingItems(date, photograph);
+        downloadStream.on("data", (data) => {
+          imageData.push(data);
+        });
 
-    await booking.save();
-    res.status(200).json(booking);
+        downloadStream.on("error", (error) => {
+          reject(new Error(`${filename}, error: Image not found`));
+        });
+
+        downloadStream.on("end", () => {
+          resolve({
+            filename,
+            data: Buffer.concat(imageData).toString("base64"),
+          });
+        });
+      });
+    });
+
+    const images = await Promise.all(imagePromises.map((p) => p.catch((e) => e)));
+
+    return images.filter((image) => image.data);
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    console.error("Error in getImages:", error);
+    throw error;
   }
 };
 
-// Get all bookings
-exports.getBookings = async (req, res) => {
-  try {
-    const bookings = await Booking.find();
-    res.status(200).json(bookings);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
+// Create a new booking
+exports.createBooking = catchAsync(async (req, res, next) => {
+  const { itemIds } = req.body;
+  const uniqueId = uuidv4();
+
+  itemIds.map(async (itemId) => {
+    const clientId = await Item.findById(itemId).select("clientId");
+    console.log(clientId);
+    const newBooking = new Booking({
+      ...req.body,
+      clientId: clientId.clientId,
+      itemId,
+      groupId: uniqueId,
+    });
+    await newBooking.save();
+  });
+  res.status(201).json({ message: "New booking added" });
+});
+
+// Cancel a booking
+exports.cancelBooking = catchAsync(async (req, res, next) => {
+  const booking = await Booking.findById(req.params.id);
+  if (!booking) {
+    return next(new AppError("Booking not found", 404));
   }
+
+  booking.status = "cancelled";
+
+  const { date, itemId } = booking;
+
+  const item = await Item.findById(itemId);
+  for (let i = 0; i < date.length; i++) {
+    const dateIndex = item.dates.findIndex((d) => d.toISOString() === date[i].toISOString());
+    if (dateIndex === -1) {
+      console.log("Date not found in item");
+    } else {
+      await Item.updateOne({ _id: itemId }, { $pull: { dates: date[i] } });
+    }
+  }
+
+  await booking.save();
+  res.status(200).json(booking);
+});
+
+// Get all bookings
+exports.getBookings = async (req, res, next) => {
+  const bookings = await Booking.find();
+  res.status(200).json({ bookings });
+};
+//GET BOOKINGS BY CLIENT ID
+exports.getBookingsByClientId = async (req, res, next) => {
+  const bookings = await Booking.find({ clientId: req.params.id });
+  res.status(200).json({ bookings });
 };
 
 // edit booking
-exports.editBooking = async (req, res) => {
-  try {
-    const booking = await Booking.findById(req.params.id);
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
+exports.editBooking = catchAsync(async (req, res, next) => {
+  const booking = await Booking.findById(req.params.id);
+  if (!booking) {
+    return next(new AppError("Booking not found", 404));
+  }
+  if (req.body.date) {
+    const { date, itemId } = booking;
+
+    const item = await Item.findById(itemId);
+    for (let i = 0; i < date.length; i++) {
+      const dateIndex = item.dates.findIndex((d) => d.toISOString() === date[i].toISOString());
+      if (dateIndex === -1) {
+        console.log("Date not found in item");
+      }
+
+      await Item.updateOne({ _id: itemId }, { $pull: { dates: date[i] } });
     }
-    if (req.body.date) {
-      const { date, venu, catring, decoration, photograph } = booking;
-      await removeDatesFromBookingItems(date, venu);
-      await removeDatesFromBookingItems(date, catring);
-      await removeDatesFromBookingItems(date, decoration);
-      await removeDatesFromBookingItems(date, photograph);
+  }
 
-      await addDatesToBookingItems(req.body.date, venu);
-      await addDatesToBookingItems(req.body.date, catring);
-      await addDatesToBookingItems(req.body.date, decoration);
-      await addDatesToBookingItems(req.body.date, photograph);
+  Object.assign(booking, { ...req.body, isEdited: true });
 
-      for (let confirmId of booking.confirmation) {
-        await Confirm.updateOne(
-          { _id: confirmId },
-          { $set: { date: req.body.date, isConfirmed: false, isEdited: true } },
-        );
+  await booking.save();
+  res.status(200).json(booking);
+});
+
+exports.confirmBooking = catchAsync(async (req, res, next) => {
+  const booking = await Booking.findById(req.params.id);
+  if (!booking) return next(new AppError("Booking not found", 404));
+
+  booking.isConfirmed = true;
+  await booking.save();
+  return res.status(201).json({ message: "success", booking });
+});
+
+exports.getEvents = catchAsync(async (req, res, next) => {
+  const bookings = await Booking.aggregate([
+    {
+      $lookup: {
+        from: "items", // Assuming the collection name for items is 'items'
+        localField: "itemId",
+        foreignField: "_id",
+        as: "itemDetails",
+      },
+    },
+    {
+      $unwind: "$itemDetails",
+    },
+    {
+      $group: {
+        _id: "$groupId",
+        bookings: { $push: "$$ROOT" },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        groupId: "$_id",
+        bookings: 1,
+      },
+    },
+  ]);
+
+  // Fetch and attach images to the response
+  for (let group of bookings) {
+    for (let booking of group.bookings) {
+      if (booking.itemDetails && booking.itemDetails.images.length > 0) {
+        const images = await getImages(booking.itemDetails.images);
+        booking.itemDetails.images = images;
       }
     }
-
-    Object.assign(booking, req.body);
-
-    await booking.save();
-    res.status(200).json(booking);
-  } catch (error) {
-    console.log(error);
-    res.status(400).json({ message: error.message });
   }
-};
+
+  res.status(200).json({
+    message: "success",
+    events: bookings,
+  });
+});
+
+// exports.getEvents = catchAsync(async (req, res, next) => {
+//   const bookings = await Booking.aggregate([
+//     {
+//       $lookup: {
+//         from: "items", // Assuming the collection name for items is 'items'
+//         localField: "itemId",
+//         foreignField: "_id",
+//         as: "itemDetails",
+//       },
+//     },
+//     {
+//       $unwind: "$itemDetails",
+//     },
+//     {
+//       $group: {
+//         _id: "$groupId",
+//         bookings: { $push: "$$ROOT" },
+//       },
+//     },
+//     {
+//       $project: {
+//         _id: 0,
+//         groupId: "$_id",
+//         bookings: 1,
+//       },
+//     },
+//   ]);
+
+//   console.log(bookings);
+//   res.status(200).json({
+//     message: "success",
+//     events: bookings,
+//   });
+// });
+
+exports.getEventById = catchAsync(async (req, res, next) => {
+  try {
+    const groupId = req.params.id;
+
+    const bookings = await Booking.find({ groupId })
+
+      .populate({
+        path: "itemId",
+        populate: { path: "typeId" },
+      })
+      .exec();
+    console.log(bookings[0]);
+    const bookingsWithImages = await Promise.all(
+      bookings.map(async (booking) => {
+        const item = booking.itemId;
+
+        const imageFiles = [...item.images, ...item?.decorationImages];
+        const images = await getImages(imageFiles);
+        return { ...booking.toObject(), item: { ...item.toObject(), images } };
+      }),
+    );
+
+    res.status(200).json({ message: "Success", bookings: bookingsWithImages });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Server error");
+  }
+});

@@ -15,5 +15,12 @@ router.get("/bookings", bookingController.getBookings);
 
 // edit selected items
 router.put("/bookings/:id", bookingController.editBooking);
+//get bookings by cliient id
+router.get("/bookings/:id", bookingController.getBookingsByClientId);
 
+//confirm bookings by client
+router.put("/booking/confirm/:id", bookingController.confirmBooking);
+
+router.get("/events", bookingController.getEvents);
+router.get("/events/:id", bookingController.getEventById);
 module.exports = router;

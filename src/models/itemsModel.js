@@ -5,15 +5,14 @@ const { Schema } = mongoose;
 const itemSchema = new Schema({
   typeId: {
     type: Schema.Types.ObjectId,
-    ref: "Event",
+    ref: "Type",
     required: true,
   },
-  userId: {
+  clientId: {
     type: Schema.Types.ObjectId,
     ref: "User",
     required: true,
   },
-
   name: {
     type: String,
     required: true,
@@ -26,13 +25,18 @@ const itemSchema = new Schema({
   },
   theme: {
     type: String,
-    required: true,
   },
   description: {
     type: String,
     required: true,
   },
   images: [
+    {
+      type: String,
+      required: true,
+    },
+  ],
+  decorationImages: [
     {
       type: String,
       required: true,

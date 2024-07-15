@@ -1,36 +1,34 @@
 const Type = require("../models/typeModel");
+const AppError = require("../utils/appError");
+const catchAsync = require("../utils/catchAsync");
 
-exports.createType = async (req, res) => {
-  try {
-    const newType = new Type(req.body);
-    await newType.save();
-    res.status(201).json({
-      message: "success",
-      newType,
-    });
-  } catch (error) {
-    res.status(400).json({
-      message: error.message,
-    });
+exports.createType = catchAsync(async (req, res) => {
+  const newType = new Type(req.body);
+  await newType.save();
+  res.status(201).json({
+    message: "success",
+    newType,
+  });
+});
+
+exports.deleteType = catchAsync(async (req, res, next) => {
+  const id = req.params.id;
+  const deleted = await Type.findOneAndDelete({ _id: id });
+
+  if (!deleted) {
+    return next(new AppError("Not found", 404));
   }
-};
+  res.status(201).json({
+    message: "success",
+  });
+});
 
-exports.deleteType = async (req, res) => {
-  try {
-    const id = req.params.id;
-    const deleted = await Type.findOneAndDelete({ _id: id });
+exports.getType = catchAsync(async (req, res) => {
+  const types = await Type.find();
+  console.log(types);
 
-    if (!deleted) {
-      return res.status(404).json({
-        message: "Not found",
-      });
-    }
-    res.status(201).json({
-      message: "success",
-    });
-  } catch (error) {
-    res.status(400).json({
-      message: error.message,
-    });
-  }
-};
+  res.status(200).json({
+    message: "success",
+    types,
+  });
+});
