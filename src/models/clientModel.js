@@ -21,9 +21,11 @@ const ClientSchema = new mongoose.Schema(
     workExperience: { type: Number, required: true },
     location: { type: String },
     contact: { type: String, required: true },
+    qId: { type: String, required: true },
+    crNo: { type: String, required: true },
     bestWork: [{ type: String }],
     description: { type: String, required: true },
-    availability: [AvailabilitySchema],
+    availability: [{ type: Date }],
     catererDetails: CatererSchema,
   },
   {
