@@ -102,7 +102,6 @@ exports.getAllClients = catchAsync(async (req, res, next) => {
 
 // * Create Client
 exports.createClient = catchAsync(async (req, res, next) => {
-  console.log("create client function called");
   try {
     const client = await Client.create(req.body);
 
@@ -123,14 +122,14 @@ exports.createClient = catchAsync(async (req, res, next) => {
   }
 });
 
-// * Get Client by id
+// * Get Client by userId
 exports.getClientByID = catchAsync(async (req, res, next) => {
   const client = await Client.find({ userId: req.params.id });
-  console.log(client);
+
   if (!client[0]) {
     return res.status(200).json({ message: "No client for this userid" });
   }
-  console.log(client);
+
   const nClient = await client[0].populate("role");
   res.status(200).json({
     status: "success",
@@ -148,7 +147,6 @@ exports.updateClient = catchAsync(async (req, res, next) => {
       runValidators: true,
     });
     const nClient = await client.populate("role");
-    console.log(nClient);
 
     if (!client) {
       return next(new AppError("No client found with that ID"));
@@ -195,6 +193,22 @@ exports.clientBooked = catchAsync(async (req, res, next) => {
     status: "success",
     data: {
       bookings,
+    },
+  });
+});
+
+// * Get Client by clientId
+exports.getClientByClientID = catchAsync(async (req, res, next) => {
+  console.log("client");
+  const client = await Client.findById(req.params.id);
+  console.log(client);
+  if (!client) {
+    return res.status(200).json({ message: "No client for this userid" });
+  }
+  res.status(200).json({
+    status: "success",
+    data: {
+      client: client,
     },
   });
 });

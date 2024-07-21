@@ -33,7 +33,7 @@ const getImages = async (image) => {
     const filenames = image;
 
     if (!filenames.length) {
-      return res.status(400).send({ error: "No filenames provided" });
+      return;
     }
     const imagePromises = filenames.map((filename) => {
       return new Promise((resolve, reject) => {
@@ -72,8 +72,6 @@ exports.createItems = catchAsync(async (req, res, next) => {
   const decorationFiles = req.files.decorationImages
     ? req?.files?.decorationImages?.map((file) => file.filename)
     : [];
-
-  console.log(req.files);
 
   if (decorationFiles.length > 0) req.body.decorationImages = decorationFiles;
 
@@ -117,7 +115,6 @@ exports.getItemsByType = catchAsync(async (req, res, next) => {
 
 exports.getItem = catchAsync(async (req, res, next) => {
   const items = await Item.find().populate("typeId");
-  console.log(items.length);
 
   const updatedItemsPromises = items.map(async (item) => {
     try {
